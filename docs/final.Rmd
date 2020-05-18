@@ -1,0 +1,1047 @@
+---
+title: "How Hard Does COVID-19 Hit Stocks?"
+author: "Montana Hoover, Isaac Solomon, Jnanadeep Dandu"
+date: "April 30, 2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+library(rvest)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(tidyverse)
+library(lubridate)
+library(broom)
+library(caret)
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+![Stock market charts during the opening bell at the New York Stock Exchange on February 28th, 2020.](stock1.jpg)  
+
+# Introduction & Motivation
+On February 26th, 2020, the first case of COVID-19 in the United States was documented. The virus proceeded to quickly spread across the country, leading to a nationwide quarantine. COVID-19 has impacted countless lives, leading to many casualties and leaving many people uncertain about the future. 
+
+Historically uncertain times can lead to devastating impacts on the economy, crippling the stock market in some cases. The New York Stock Exchange collects over 1 terabyte of data each day and many data scientists are employed to analyze the stock market. Therefore, the stock market has a vast amount of data available to analyze, which can be used to predict how the economy is doing. Our aim with this tutorial is to determine how severely COVID-19 has impacted the stock market, and how it has affected the volatility of a collection of stocks also known as a portfolio. If you would like to learn more about portfolios please see the links below:
+
+**Beginner** What is a portfolio:  
+https://www.investopedia.com/terms/p/portfolio.asp  
+**Advanced** Managing a stock portfolio:  
+https://marketsmith.investors.com/Learn/Topic.aspx?name=Managing%2BYour%2BPortfolio&type=4  
+
+# Description of dataset  
+
+The dataset used contains 2,982 entities which are stock records for a specific stock on a given day for the past 100 days. The attributes of the entities are listed below:  
+
+|      Name        |              Type                 |                                       Description                                |
+|------------------|-----------------------------------|----------------------------------------------------------------------------------|
+| Stock | categorical unordered | The name of the stock |
+| Sector | categorical unordered | The sector of the stock |
+| Cap | categorical ordered | The capitalization of the stock |
+| Date | date | The date the data was recorded |
+| Open | numeric continuous | The price of the stock when the market opened on the given day |
+| High | numeric continuous | The highest price recorded for the stock on the given day |
+| Low | numeric continuous | The lowest price recorded for the stock on the given day |
+| Open | numeric continuous | The price of the stock when the market closed on the given day |
+| Adjusted Close | numeric continuous | The adjusted close price of the stock when the market closed on the given day |
+| Volume | numeric discrete | The number of shares traded on the given day |
+
+# Libraries  
+The necessary libraries for the following tutorial are:  
+
+* rvest
+* dplyr
+* tidyr
+* stringr
+* tidyverse
+* lubridate
+* broom
+* caret
+* knitr
+
+# Data scraping and preparation  
+
+Once the libraries have been included the scraping can begin. The data is found on various Yahoo Finance pages where each page contains historical prices for that stock. The function scrap table takes in the URL of any Yahoo Finance quote page showing historical data of a stock, so this function can be used with any stock on Yahoo Finance. Further, the function takes the name of the stock and the sector category of the stock which can be found on the profile tab of the current page. The function creates a tibble data frame containing the last 100 days of stock information by selecting the HTML node that contains the table. Then, we can select the specific column of the table for each attribute to assign the attribute, and finally, combine all attributes to create the data frame.    
+
+```{r}
+scrap_table <- function(url, stock, sector, cap) {
+  # Read in content from html url and select content from specific class
+  table_content <- url %>%
+    read_html() %>%
+    html_nodes("section,div,table") 
+  
+  # Extract each attribute from the correct td node
+  date <- table_content %>% html_nodes("tr") %>% html_node("td:first-of-type") %>% 
+    magrittr::extract(-1) %>% html_text()
+  open <- table_content %>% html_nodes("tr") %>% 
+    html_node("td:nth-of-type(2)") %>% magrittr::extract(-1) %>% html_text()
+  high <- table_content %>% html_nodes("tr") %>% html_node("td:nth-of-type(3)") %>%
+    magrittr::extract(-1) %>% html_text()
+  low <- table_content %>% html_nodes("tr") %>% html_node("td:nth-of-type(4)") %>%
+    magrittr::extract(-1) %>% html_text()
+  close <- table_content %>% html_nodes("tr") %>% html_node("td:nth-of-type(5)") %>% 
+    magrittr::extract(-1) %>% html_text()
+  adjusted_close <- table_content %>% html_nodes("tr") %>% 
+    html_node("td:nth-of-type(6)") %>% magrittr::extract(-1) %>% html_text()
+  volume <- table_content %>% html_nodes("tr") %>% html_node("td:nth-of-type(7)") %>% 
+    magrittr::extract(-1) %>% html_text()
+  table <- tibble(stock = stock, sector = sector, cap = cap, date = date, open = open, 
+                  high = high, low = low, close = close, 
+                  adjusted_close = adjusted_close, volume = volume)
+}
+```
+
+Next, we load 30 different stocks from across large, mid, and small-cap stocks to create diversity in the portfolio. The cap of a stock is the market capitalization the smaller the cap the fewer shares that are traded by that company. Also, the smaller the cap the riskier the investment, but with more risk comes more reward because a small company could become a large company which would result in a large gain of profit. Moreover, there are two stocks included from each cap across 5 different sectors: information technology, communication services, consumer discretionary, consumer staples, and industrials. A sector is different categories of the economy where the companies are placed and the sector is determined by what service or product they offer. The diversification of sectors is good in a portfolio because it is more likely stocks across different sectors will not share decreasing trends in stock price. Therefore, we now have 30 different data frames for our 30 different stocks, for more information about market capitalization and sectors please see the links below:  
+
+**Market Capitalization**   
+**Beginner**  http://www.investorwords.com/2969/market_capitalization.html  
+**Advanced**  https://www.investopedia.com/articles/markets/022316/small-cap-vs-mid-cap-vs-large-cap-stocks-2016.asp  
+**Sector**  
+**Beginner**  https://www.investopedia.com/terms/s/sector.asp  
+**Advanced**  https://www.timothysykes.com/blog/different-stock-sectors/  
+
+```{r}
+# Large cap 10 stocks  
+apple_table <- 
+  scrap_table("https://finance.yahoo.com/quote/AAPL/history?p=AAPL", 
+              "Apple", "Information Technology", "large")
+microsoft_table <- 
+  scrap_table("https://finance.yahoo.com/quote/MSFT/history?p=MSFT", 
+              "Microsoft", "Information Technology", "large")
+netflix_table <- 
+  scrap_table("https://finance.yahoo.com/quote/NFLX/history?p=NFLX", 
+              "Netflix", "Communication Services", "large")
+google_table <- 
+  scrap_table("https://finance.yahoo.com/quote/GOOG/history?p=GOOG", 
+              "Google", "Communication Services", "large")
+amazon_table <- 
+  scrap_table("https://finance.yahoo.com/quote/AMZN/history?p=AMZN", 
+              "Amazon", "Consumer Discretionary", "large")
+tesla_table <- 
+  scrap_table("https://finance.yahoo.com/quote/TSLA/history?p=TSLA", 
+              "Tesla", "Consumer Discretionary", "large")
+walmart_table <- 
+  scrap_table("https://finance.yahoo.com/quote/WMT/history?p=WMT", 
+              "Walmart", "Consumer Staples", "large")
+coca_cola_table <- 
+  scrap_table("https://finance.yahoo.com/quote/KO/history?p=KO", 
+              "Coca-Cola", "Consumer Staples", "large")
+boeing_table <- 
+  scrap_table("https://finance.yahoo.com/quote/BA/history?p=BA", 
+              "Boeing", "Industrials", "large")
+lockheed_martin <- 
+  scrap_table("https://finance.yahoo.com/quote/LMT/history?p=LMT", 
+              "Lockheed Martin", "Industrials", "large")
+# Mid cap 10 stocks
+first_solar <- 
+  scrap_table("https://finance.yahoo.com/quote/FSLR/history?p=FSLR", 
+              "First Solar", "Information Technology", "mid")
+tech_data <- 
+  scrap_table("https://finance.yahoo.com/quote/TECD/history?p=TECD", 
+              "Tech Data", "Information Technology", "mid")
+spark_new_zealand <- 
+  scrap_table("https://finance.yahoo.com/quote/SPKKY/history?p=SPKKY", 
+              "Spark New Zealand", "Communication Services", "mid")
+madison_square_garden <- 
+  scrap_table("https://finance.yahoo.com/quote/MSGS/history?p=MSGS", 
+              "Madison Square Garden Sports", "Communication Services", "mid")
+planet_fitness <- 
+  scrap_table("https://finance.yahoo.com/quote/PLNT/history?p=PLNT", 
+              "Planet Fitness", "Consumer Discretionary", "mid")
+wendys <- 
+  scrap_table("https://finance.yahoo.com/quote/WEN/history?p=WEN", 
+              "Wendys", "Consumer Discretionary", "mid")
+bjs <- 
+  scrap_table("https://finance.yahoo.com/quote/BJ/history?p=BJ", 
+              "BJ's Wholesale Club", "Consumer Staples", "mid")
+flowers_foods <- 
+  scrap_table("https://finance.yahoo.com/quote/FLO/history?p=FLO", 
+              "Flowers Foods", "Consumer Staples", "mid")
+american_airlines <- 
+  scrap_table("https://finance.yahoo.com/quote/AAL/history?p=AAL", 
+              "American Airlines", "Industrials", "mid")
+united_airlines <- 
+  scrap_table("https://finance.yahoo.com/quote/UAL/history?p=UAL", 
+              "United Airlines", "Industrials", "mid")
+# Small cap 10 stocks
+ncr <- 
+  scrap_table("https://finance.yahoo.com/quote/NCR/history?p=NCR", 
+              "NCR", "Information Technology", "small")
+model_n <- 
+  scrap_table("https://finance.yahoo.com/quote/MODN/history?p=MODN", 
+              "Model N", "Information Technology", "small")
+world_wrestling_entertainment <- 
+  scrap_table("https://finance.yahoo.com/quote/WWE/history?p=WWE", 
+              "WWE", "Communication Services", "small")
+scholastic <- 
+  scrap_table("https://finance.yahoo.com/quote/SCHL/history?p=SCHL", 
+              "Scholastic", "Communication Services", "small")
+cheesecake_factory <- 
+  scrap_table("https://finance.yahoo.com/quote/CAKE/history?p=CAKE", 
+              "Cheesecake Factory", "Consumer Discretionary", "small")
+groupon <- 
+  scrap_table("https://finance.yahoo.com/quote/GRPN/history?p=GRPN", 
+              "Groupon", "Consumer Discretionary", "small")
+rite_aid <- 
+  scrap_table("https://finance.yahoo.com/quote/RAD/history?p=RAD", 
+              "Rite Aid", "Consumer Staples", "small")
+united_natural_foods <- 
+  scrap_table("https://finance.yahoo.com/quote/UNFI/history?p=UNFI", 
+              "United Natural Foods", "Consumer Staples", "small")
+spirit_aerosystems <- 
+  scrap_table("https://finance.yahoo.com/quote/SPR/history?p=SPR", 
+              "Spirit AeroSystems", "Industrials", "small")
+spirit_airlines <- 
+  scrap_table("https://finance.yahoo.com/quote/SAVE/history?p=SAVE", 
+              "Spirit Airlines", "Industrials", "small")
+```
+
+After, we observe the scraped data attained needs to be cleaned for stocks that give a dividend to investors. The reason is Yahoo Finance includes rows that don't have any data and only shows the dividend given for the specific day for these stocks. Therefore, we can also observe that every occurrence of rows like this causes the volume data for this row to be NA, using this knowledge. We can use the function below that takes in a data frame and excludes any rows where volume is NA.  
+
+```{r}
+# Removing invalid rows
+remove_invalid_rows <- function(table) {
+  table %>%
+    select(everything()) %>%
+    filter(!is.na(volume))
+}
+```
+
+The code below uses this function on our 30 different data frames and it should now be noted that we no longer have 100 days of data for stocks that provide a dividend. Therefore, the stocks that don't provide dividends will be more heavily weighted in the analysis later on.    
+
+```{r}
+apple_table <- remove_invalid_rows(apple_table)
+microsoft_table <- remove_invalid_rows(microsoft_table)
+netflix_table <- remove_invalid_rows(netflix_table)
+google_table <- remove_invalid_rows(google_table)
+amazon_table <- remove_invalid_rows(amazon_table)
+tesla_table <- remove_invalid_rows(tesla_table)
+walmart_table <- remove_invalid_rows(walmart_table)
+coca_cola_table <- remove_invalid_rows(coca_cola_table)
+boeing_table <- remove_invalid_rows(boeing_table)
+lockheed_martin <- remove_invalid_rows(lockheed_martin)
+first_solar <- remove_invalid_rows(first_solar)
+tech_data <- remove_invalid_rows(tech_data)
+spark_new_zealand <- remove_invalid_rows(spark_new_zealand)
+madison_square_garden <- remove_invalid_rows(madison_square_garden)
+planet_fitness <- remove_invalid_rows(planet_fitness)
+wendys <- remove_invalid_rows(wendys)
+bjs <- remove_invalid_rows(bjs)
+flowers_foods <- remove_invalid_rows(flowers_foods)
+american_airlines <- remove_invalid_rows(american_airlines)
+united_airlines <- remove_invalid_rows(united_airlines)
+ncr <- remove_invalid_rows(ncr)
+model_n <- remove_invalid_rows(model_n)
+world_wrestling_entertainment <- remove_invalid_rows(world_wrestling_entertainment)
+scholastic <- remove_invalid_rows(scholastic)
+cheesecake_factory <- remove_invalid_rows(cheesecake_factory)
+groupon <- remove_invalid_rows(groupon)
+rite_aid <- remove_invalid_rows(rite_aid)
+united_natural_foods <- remove_invalid_rows(united_natural_foods)
+spirit_aerosystems <- remove_invalid_rows(spirit_aerosystems)
+spirit_airlines <- remove_invalid_rows(spirit_airlines)
+```
+
+Finally, we can create our final data frame by using the function below that takes in the final data frame as the first parameter and takes in a stock table as the second parameter. 
+
+```{r}
+create_stocks_table <- function(result_table, stock_table) {
+  result_table %>%
+    bind_rows(stock_table)
+}
+```
+
+The code below loads up each of the data frames to create the final data frame, one should note that on the first call two stock data frames are used as the parameters to create the temporary table. Then, the temporary table can be used as the first parameter for the remaining calls to the function.     
+
+```{r}
+temp_stocks_table <- create_stocks_table(apple_table, microsoft_table)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, netflix_table)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, google_table)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, amazon_table)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, tesla_table)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, walmart_table)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, coca_cola_table)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, boeing_table)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, lockheed_martin)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, first_solar)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, tech_data)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, spark_new_zealand)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, madison_square_garden)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, planet_fitness)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, wendys)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, bjs)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, flowers_foods)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, american_airlines)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, united_airlines)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, ncr)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, model_n)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, world_wrestling_entertainment)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, scholastic)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, cheesecake_factory)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, groupon)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, rite_aid)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, united_natural_foods)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, spirit_aerosystems)
+temp_stocks_table <- create_stocks_table(temp_stocks_table, spirit_airlines)
+```
+
+Since we have constructed the final data frame it is time to tidy the dataset. We call this pipeline below on the temporary data frame which will remove all the commas in the volume column, so it can be parsed as an integer.    
+
+```{r}
+# Replacing , with "" in volume
+temp_stocks_table <- temp_stocks_table %>%
+  select(everything()) %>%
+  mutate(volume = str_replace_all(volume, "\\D+", ""))
+```
+
+The last step in tidying the dataset is to convert all of the attributes to their proper data type. We will use the pipeline below that will use parse_guess to convert most of the attributes such as stock name to a character type and open, high, low, close, and adjusted close to a double type. Lastly, we will use mdy to convert the date to a date type and parse_integer to convert volume to an integer type.    
+
+```{r}
+# Converting the attributes to proper data type
+stocks_table <- temp_stocks_table %>%
+  select(everything()) %>%
+  mutate(stock = parse_guess(stock),
+         date = mdy(date),
+         open = parse_guess(open),
+         high = parse_guess(high),
+         low = parse_guess(low),
+         close = parse_guess(close),
+         adjusted_close = parse_guess(adjusted_close),
+         volume = parse_integer(volume))
+head(stocks_table)
+```  
+
+# Exploratory Data Analysis  
+
+```{r}
+# A scatterplot showing the distribution for day average stock's high
+dayone = min(stocks_table$date)
+
+date_stocks_tbl <- stocks_table %>%
+  group_by(date) %>%
+  summarize(high_mean = mean(high)) %>%
+  mutate(daynum = as.numeric(date - dayone + 1,units="days"))
+date_stocks_tbl %>%
+  ggplot(aes(x=date,y=high_mean,color=high_mean)) +
+  geom_point() +
+  geom_smooth(method="lm",se=F) +
+  labs(title="Stock's Average Day High", 
+       x = "Day", y="Average Day High") + 
+  theme_classic() +
+  scale_x_date(date_breaks = "2 weeks") +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```  
+
+```{r}
+date_fit <- lm(high_mean~daynum, data = date_stocks_tbl)
+summary(date_fit)
+```
+
+This above scatterplot displays the serious decline the stock market underwent in the first few weeks of March, when coronavirus was first beginning to spread in the U.S., and there was widespread fear and uncertainty. Many stocks fell to record lows. The scatterplot shows a trendline but we can clearly see that the trendline is not good indicating that a linear relationship does not properly model this. This is further established by the R-squared being `r summary(date_fit)$r.squared`. 
+
+```{r}
+# A box plot showing the distribution for average day high for each sector
+datesector_stocks_tbl <- stocks_table %>% 
+  group_by(date, sector) %>%
+  summarize(high_mean = mean(high)) %>%
+  mutate(daynum = as.numeric(date - dayone + 1,units="days"))
+
+datesector_stocks_tbl %>%
+  ggplot(aes(x=date, y=high_mean, color=sector)) +
+  geom_point() +
+  geom_smooth(method="lm", se=F) +
+  labs(title="Sector's Average Day High", 
+       x = "Day", y="Average Day High") + 
+  theme_classic() +
+  scale_x_date(date_breaks = "2 weeks") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```
+
+We can see from this plot that essentially all industries took a dip at the beginning of March, when coronavirus was beginning to spread. The sectors of consumer discretionary, consumer services, information technology, and industrials all experienced visible dips in their average day high at the beginning of March, which continued to decline until mid-march, at which point stock average highs appeared to increase back to normal levels again.  
+
+```{r}
+sectors <- unique(stocks_table$sector)
+commserv_fit <- lm(high_mean~daynum, data=datesector_stocks_tbl 
+                   %>% filter(sector=="Communication Services"))
+consdisc_fit <- lm(high_mean~daynum, data=datesector_stocks_tbl 
+                   %>% filter(sector=="Consumer Discretionary"))
+consstap_fit <- lm(high_mean~daynum, data=datesector_stocks_tbl 
+                   %>% filter(sector=="Consumer Staples"))
+indust_fit <- lm(high_mean~daynum, data=datesector_stocks_tbl 
+                 %>% filter(sector=="Industrials"))
+infotech_fit <- lm(high_mean~daynum, data=datesector_stocks_tbl 
+                %>% filter(sector=="Information Technology"))
+secslopes <- c(summary(commserv_fit)$coefficients[2],
+               summary(consdisc_fit)$coefficients[2],
+               summary(consstap_fit)$coefficients[2],
+               summary(indust_fit)$coefficients[2],
+               summary(infotech_fit)$coefficients[2])
+secrsq <- c(summary(commserv_fit)$r.squared,summary(consdisc_fit)$r.squared,
+            summary(consstap_fit)$r.squared,summary(indust_fit)$r.squared,
+            summary(infotech_fit)$r.squared)
+sec_data <- data.frame(sectors,secslopes,secrsq)
+sec_data
+```  
+
+```{r}
+commServ <- stocks_table %>% 
+  filter(sector == "Communication Services") %>%
+  mutate(daynum = as.numeric(date - dayone + 1,units="days"))
+
+commServ %>%
+  ggplot(aes(x=date, y=high, color=stock)) +
+  geom_point() +
+  geom_smooth(method="lm", se=F) +
+  labs(title="Average Day High in Communication Services", 
+       x = "Day", y="Average Day High") + 
+  theme_classic() +
+  scale_x_date(date_breaks = "2 weeks") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```  
+
+```{r}
+consdisc <- stocks_table %>% 
+  filter(sector == "Consumer Discretionary") %>%
+  mutate(daynum = as.numeric(date - dayone + 1,units="days"))
+
+consdisc %>%
+  ggplot(aes(x=date, y=high, color=stock)) +
+  geom_point() +
+  geom_smooth(method="lm", se=F) +
+  labs(title="Average Day High in Consumer Discretionary", 
+       x = "Day", y="Average Day High") + 
+  theme_classic() +
+  scale_x_date(date_breaks = "2 weeks") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```  
+
+```{r}
+consstap <- stocks_table %>% 
+  filter(sector == "Consumer Staples") %>%
+  mutate(daynum = as.numeric(date - dayone + 1,units="days"))
+
+consstap %>%
+  ggplot(aes(x=date, y=high, color=stock)) +
+  geom_point() +
+  geom_smooth(method="lm", se=F) +
+  labs(title="Average Day High in Consumer Staples", 
+       x = "Day", y="Average Day High") + 
+  theme_classic() +
+  scale_x_date(date_breaks = "2 weeks") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```  
+
+```{r}
+indust <- stocks_table %>% 
+  filter(sector == "Industrials") %>%
+  mutate(daynum = as.numeric(date - dayone + 1,units="days"))
+
+indust %>%
+  ggplot(aes(x=date, y=high, color=stock)) +
+  geom_point() +
+  geom_smooth(method="lm", se=F) +
+  labs(title="Average Day High in Industrials", 
+       x = "Day", y="Average Day High") + 
+  theme_classic() +
+  scale_x_date(date_breaks = "2 weeks") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```  
+
+```{r}
+infotech <- stocks_table %>% 
+  filter(sector == "Information Technology") %>%
+  mutate(daynum = as.numeric(date - dayone + 1,units="days"))
+
+infotech %>%
+  ggplot(aes(x=date, y=high, color=stock)) +
+  geom_point() +
+  geom_smooth(method="lm", se=F) +
+  labs(title="Average Day High in Information Technology", 
+       x = "Day", y="Average Day High") + 
+  theme_classic() +
+  scale_x_date(date_breaks = "2 weeks") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```  
+
+```{r}
+# A box plot showing the distribution for average day difference (high - low) for each cap
+diff_stocks_tbl <- stocks_table %>% 
+  group_by(date,cap) %>%
+  summarize(diff_mean = mean(high - low)) %>%
+  mutate(daynum = as.numeric(date - dayone + 1,units="days"))
+diff_stocks_tbl %>%
+  ggplot(aes(x=date, y=diff_mean, color=cap)) +
+  geom_point() +
+  geom_smooth(method="lm", se=F) +
+  labs(title="Cap's Average Day Difference", 
+       x = "Day", y="Average Day Difference") + 
+  theme_classic() +
+  scale_x_date(date_breaks = "2 weeks") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```  
+
+```{r}
+caps <- unique(stocks_table$cap)
+large_fit <- lm(diff_mean~daynum,data=diff_stocks_tbl 
+                %>% filter(cap == "large"))
+mid_fit <- lm(diff_mean~daynum,data=diff_stocks_tbl 
+              %>% filter(cap == "mid"))
+small_fit <- lm(diff_mean~daynum,data=diff_stocks_tbl 
+                %>% filter(cap == "small"))
+capslopes <- c(summary(large_fit)$coefficients[2],summary(mid_fit)$coefficients[2],
+               summary(small_fit)$coefficients[2])
+caprsq <- c(summary(large_fit)$r.squared, summary(mid_fit)$r.squared,
+            summary(small_fit)$r.squared)
+cap_data <- data.frame(caps, capslopes, caprsq)
+cap_data
+```  
+
+```{r}
+# A scatter plot showing the distribution for stock's average 
+# correlation of volume and day difference across time
+stocks_table %>% 
+  mutate(time_period=cut(date, breaks=5)) %>%
+  group_by(date, stock) %>%
+  ggplot(aes(x=volume, y=high - low)) +
+  geom_jitter(width=.5, size=1) +
+  labs(title="Average Correlation Between Stock's Volume
+\nand Stock's Day difference", 
+       color = "Stock's", x = "Stock's Volume", 
+       y="Stock's Day Difference") + 
+  facet_grid(~time_period) +
+  geom_smooth(method='lm', colour='black', size=.3) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6),
+        legend.title = element_text(vjust=-1))
+```  
+
+# Data Transformation
+```{r}
+# Creating a temporary data frame to hold the average and standard deviation of volume
+# for each day
+temp_df <- stocks_table %>%
+  group_by(date) %>%
+  summarise(volume_mean = mean(volume), volume_sd = sd(volume))
+
+# Joining the temporary table and the payroll_df conditioned on yearID
+new_stocks_table <- stocks_table %>%
+  inner_join(temp_df, by="date")
+
+# Computing the standardized payroll
+new_stocks_table <- new_stocks_table %>%
+  mutate(standardized_volume = (volume - volume_mean)/volume_sd)
+```  
+
+```{r}
+# A scatter plot showing the distribution for stock's average correlation 
+# of standardized volume and day difference across time
+new_stocks_table %>% 
+  mutate(time_period=cut(date, breaks=5)) %>%
+  group_by(date, stock) %>%
+  ggplot(aes(x=standardized_volume, y=high - low)) +
+  geom_jitter(width=.5, size=1) +
+  labs(title="Average Correlation Between Stock's Standardized Volume
+\nand Stock's Day Difference Across 5 Time Series", 
+       color = "Stock's", x = "Stock's Standardized Volume", 
+       y="Stock's Day Difference") + 
+  facet_grid(~time_period) +
+  geom_smooth(method='lm', colour='black', size=.3) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6),
+        legend.title = element_text(vjust=-1))
+```  
+
+```{r}
+# A scatter plot showing the distribution for stock's average correlation 
+# of standardized volume and day difference
+new_stocks_table %>% 
+  ggplot(aes(x=standardized_volume, y=high - low)) +
+  geom_point() +
+  geom_smooth(method='lm', colour='black', size=.5) +
+  labs(title="Average Correlation Between Stock's Standardized Volume
+\nand Stock's Day Difference Across Time", 
+       x = "Stock's Standardized Volume", 
+       y="Stock's Day Difference",
+       color = "LABEL") + 
+  theme_classic() +
+  theme(legend.title = element_text(vjust=-2))
+```  
+
+```{r}
+# A bar graph showing the average day difference for all stocks
+stocks_table %>% 
+  group_by(stock) %>%
+  summarise(avg_difference = mean(high - low)) %>%
+  ggplot(aes(x=stock, y=avg_difference)) + 
+  geom_bar(stat="identity", width=.5, fill="green") + 
+  labs(title="Stock's Average Day Difference", 
+       x = "Stock", 
+       y="Stock's Average Day Difference",
+       color = "LABEL") + 
+  theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```  
+
+```{r}
+# Boxplot showing the distribution of stock's day change
+stocks_table %>% 
+  group_by(stock) %>%
+  ggplot(aes(stock, open - close)) + 
+  geom_boxplot(varwidth=T, fill="plum") + 
+    labs(title="Stock's Day Change", 
+       x = "Stock", 
+       y="Day's Change",
+       color = "LABEL") + 
+  theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```  
+
+# Linear Regression
+```{r}
+covidday <- as.Date("2020-02-25")
+covidstocks <- stocks_table %>% 
+  filter(date >= covidday) %>%
+  mutate(daynum = as.numeric(date - covidday, units="days"))
+covidstocks
+```  
+
+```{r}
+sec1 <- lm(close~daynum,data = covidstocks 
+           %>% filter(stock == "Apple"))
+sec2 <- lm(close~daynum,data = covidstocks 
+           %>% filter(stock == "Microsoft"))
+sec3 <- lm(close~daynum,data = covidstocks
+           %>% filter(stock == "Netflix"))
+sec4 <- lm(close~daynum,data = covidstocks 
+           %>% filter(stock == "Google"))
+sec5 <- lm(close~daynum,data = covidstocks 
+           %>% filter(stock == "Amazon"))
+sec6 <- lm(close~daynum,data = covidstocks 
+           %>% filter(stock == "Tesla"))
+sec7 <- lm(close~daynum,data = covidstocks 
+           %>% filter(stock == "Walmart"))
+sec8 <- lm(close~daynum,data = covidstocks 
+           %>% filter(stock == "Coca-Cola"))
+sec9 <- lm(close~daynum,data = covidstocks 
+           %>% filter(stock == "Boeing"))
+sec10 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Lockheed Martin"))
+sec11 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "First Solar"))
+sec12 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Tech Data"))
+sec13 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Spark New Zealand"))
+sec14 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Madison Square Garden Sports"))
+sec15 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Planet Fitness"))
+sec16 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Wendys"))
+sec17 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "BJ's Wholesale Club"))
+sec18 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Flowers Foods"))
+sec19 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "American Airlines"))
+sec20 <- lm(close~daynum,data = covidstocks
+            %>% filter(stock == "United Airlines"))
+sec21 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "NCR"))
+sec22 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Model N"))
+sec23 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "WWE"))
+sec24 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Scholastic"))
+sec25 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Cheesecake Factory"))
+sec26 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Groupon"))
+sec27 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Rite Aid"))
+sec28 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "United Natural Foods"))
+sec29 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Spirit AeroSystems"))
+sec30 <- lm(close~daynum,data = covidstocks 
+            %>% filter(stock == "Spirit Airlines"))
+company <- unique(covidstocks$stock)
+slopes <- c(summary(sec1)$coefficients[2], summary(sec2)$coefficients[2],
+            summary(sec3)$coefficients[2], summary(sec4)$coefficients[2],
+            summary(sec5)$coefficients[2],summary(sec6)$coefficients[2],
+            summary(sec7)$coefficients[2], summary(sec8)$coefficients[2],
+            summary(sec9)$coefficients[2], summary(sec10)$coefficients[2],
+            summary(sec11)$coefficients[2], summary(sec12)$coefficients[2],
+            summary(sec13)$coefficients[2], summary(sec14)$coefficients[2],
+            summary(sec15)$coefficients[2], summary(sec16)$coefficients[2],
+            summary(sec17)$coefficients[2], summary(sec18)$coefficients[2],
+            summary(sec19)$coefficients[2], summary(sec20)$coefficients[2],
+            summary(sec21)$coefficients[2], summary(sec22)$coefficients[2],
+            summary(sec23)$coefficients[2], summary(sec24)$coefficients[2],
+            summary(sec25)$coefficients[2], summary(sec26)$coefficients[2],
+            summary(sec27)$coefficients[2], summary(sec28)$coefficients[2],
+            summary(sec29)$coefficients[2], summary(sec30)$coefficients[2])
+rsq <- c(summary(sec1)$r.squared, summary(sec2)$r.squared, summary(sec3)$r.squared,
+         summary(sec4)$r.squared, summary(sec5)$r.squared,summary(sec6)$r.squared,
+         summary(sec7)$r.squared, summary(sec8)$r.squared, summary(sec9)$r.squared,
+         summary(sec10)$r.squared, summary(sec11)$r.squared, summary(sec12)$r.squared,
+         summary(sec13)$r.squared, summary(sec14)$r.squared, summary(sec15)$r.squared,
+         summary(sec16)$r.squared, summary(sec17)$r.squared, summary(sec18)$r.squared,
+         summary(sec19)$r.squared, summary(sec20)$r.squared, summary(sec21)$r.squared,
+         summary(sec22)$r.squared, summary(sec23)$r.squared, summary(sec24)$r.squared,
+         summary(sec25)$r.squared, summary(sec26)$r.squared, summary(sec27)$r.squared,
+         summary(sec28)$r.squared, summary(sec29)$r.squared, summary(sec30)$r.squared)
+close_rsq <- data.frame(company,slopes,rsq)
+close_rsq %>% arrange(desc(rsq))
+```  
+
+This data frame shows the slope (how much price is being affected each day) and the R-squared value for a linear model on the company's price by the number of days since COVID-19 hit America. As we can see, the linear model is likely not the best for most, if not all, of these companies' prices since COVID-19's impact on America. This is understandable because of the external factors that are not easily quantifiable especially in a simple linear regression model. 
+
+# Machine Learning  
+
+Part of the reason that the linear regression models struggled heavily with providing a good fit is due to the heightened volatility. 12 of the 20 largest daily point gains in the Dow Jones Industrial Average (since 1896) have come after February 26, 2020, alone which has been accompanied by 13 of the 20 largest daily point losses. Therefore in our attempts to determine if we can predict whether a stock will increase or decrease given the increased volatility in the stock market as a result of COVID-19, we will use machine learning. The experiment will use two different ways to determine the best prediction. The first will use the daily difference of stock difference standardized and the other will be unstandardized. However, both experiments will use random forests with 500 decision trees and use 10-fold cross-validation to determine the attributes used in each fold. The reason for using decision trees is because their performance can compete with the best-supervised learning algorithms. Further, random forests offer efficient estimates of the test error without adding the cost of repeated model training associated with cross-validation. To learn more about random forests please explore the link below:   
+**Random forests**  
+https://towardsdatascience.com/understanding-random-forest-58381e0602d2  
+
+## Data Preparation  
+
+First, we will have to determine the two latest dates in the dataset. Since the data is loaded using the URLs the method used is general and will work no matter when the dataset was obtained. The code below orders unique dates from the latest to earliest selecting the first two elements and returning them as a matrix.  
+
+```{r}
+# Obtaining the two latest dates in dataset
+latest_dates <- stocks_table %>%
+  arrange(desc(date)) %>%
+  distinct(date) %>%
+  select(date) %>%
+  slice(1:2) %>%
+  as.matrix()
+```
+
+The code below filters the data frame to exclude all the entities that are recorded on the two latest dates. After we can now select the stock name, date, and open to make a wide data frame where each entity is the stock name and the price at which the stock opened on the two most recent dates.   
+
+```{r}
+# Initializing two latest dates
+latest_date = latest_dates[1]
+before_latest_date = latest_dates[2]
+
+# Initializing outcome for all stocks for daily difference on latest dates
+outcome_df <- stocks_table %>%
+  filter(between(date, parse_date(before_latest_date), parse_date(latest_date))) %>%
+  select(stock, date, open) %>%
+  pivot_wider(names_from = date, values_from = open) 
+```
+
+After, we can compute the difference of the two most recent dates and determine whether the difference is positive or negative to determine if the stock went up or down in price, which will serve as the outcome we try to predict.   
+
+```{r}
+# Changing names of two latest dates
+names(outcome_df)[2] <- "latest_date"
+names(outcome_df)[3] <- "before_latest_date"
+
+# Initializing outcome for all stocks for daily difference on latest dates
+outcome_df <- outcome_df %>%
+  mutate(difference = outcome_df$latest_date - outcome_df$before_latest_date) %>%
+  mutate(Direction = ifelse(difference > 0, "up", "down")) %>%
+  select(stock, Direction)
+```
+
+The code below filters the stock table to exclude all entities that were not recorded on the most recent dates and store the result in a prediction data frame.  
+
+```{r}
+# Creating prediction data frame
+predictor_df <- stocks_table %>%
+  filter(!(between(date, parse_date(before_latest_date), parse_date(latest_date))))
+```
+
+Now, the standardized open price can be computed using our prediction data frame and grouping by stock. The hope is that standardizing will make it easier to predict daily differences among stocks by having them share the same distribution the standard normal distribution, for more information about standardizing please see the link below:  
+**Standardization**  
+https://365datascience.com/standardization/
+
+```{r}
+# Adding standardized open to the data frame
+predictor_df <- predictor_df %>%
+  group_by(stock) %>%
+  mutate(mean_open = mean(open)) %>%
+  mutate(sd_open = sd(open)) %>%
+  mutate(standardized_open = 
+           (open - mean_open) / sd_open) %>%
+  ungroup()
+head(predictor_df)
+```
+
+Lets now create two separate daily open wide data frames by selecting the stock name, date, and standardized open. Then, we will have a data frame where each entity is a stock containing all of its opening prices in the data set. Also, since some stocks contained dividend rows we have to remove the columns that contain NA for the stocks without 100 recorded opening prices.    
+
+```{r}
+# Creating standardized daily open for all stocks
+standardized_daily_opens_df <- predictor_df %>%
+  select(stock, date, standardized_open) %>%
+  tidyr::pivot_wider(names_from = date, values_from = standardized_open) %>%
+  select_if(~ !any(is.na(.)))
+```
+
+The code below creates the unstandardized wide data frame which is created using the same strategy used in the code above.       
+
+```{r}
+# Creating unstandardized daily open for all stocks
+unstandardized_daily_opens_df <- predictor_df %>%
+  select(stock, date, open) %>%
+  tidyr::pivot_wider(names_from = date, values_from = open) %>%
+  select_if(~ !any(is.na(.)))
+```
+
+We can now use the daily open data frame to create a data frame that contains the standardized opening price difference for each stock in the data set. First, we exclude the stock name and create a matrix that includes all standardized opening prices except the first. Next, create a matrix using all of the standardized opening prices except the last then using both of these matrices we can create a matrix containing all of the standardized differences in price openings for each stock.    
+
+```{r, warning=FALSE}
+# Creating matrix excluding first date column in dataset
+standardized_matrix_exclude_first <- standardized_daily_opens_df %>%
+  select(-stock) %>%
+  as.matrix() %>%
+  .[,-1]
+
+# Creating a matrix excluding last date column in dataset
+standardized_matrix_exclude_last <- standardized_daily_opens_df %>%
+  select(-stock) %>%
+  as.matrix() %>%
+  .[,-ncol(.)]
+
+# Creating the standardized difference for each date in the dataset
+standardized_difference_df <- 
+  (standardized_matrix_exclude_first - standardized_matrix_exclude_last) %>%
+  magrittr::set_colnames(NULL) %>%
+  as_tibble() %>%
+  mutate(stock = standardized_daily_opens_df$stock)
+```
+
+The same technique can be used as above for the unstandardized prices resulting in a data frame containing the unstandardized opening price differences for each stock.  
+
+```{r, warning=FALSE}
+# Creating matrix excluding first date column in dataset
+unstandardized_matrix_exclude_first <- unstandardized_daily_opens_df %>%
+  select(-stock) %>%
+  as.matrix() %>%
+  .[,-1]
+
+# Creating a matrix excluding last date column in dataset
+unstandardized_matrix_exclude_last <- unstandardized_daily_opens_df %>%
+  select(-stock) %>%
+  as.matrix() %>%
+  .[,-ncol(.)]
+
+# Creating the unstandardized difference for each date in the dataset
+unstandardized_difference_df <- 
+  (unstandardized_matrix_exclude_first - unstandardized_matrix_exclude_last) %>%
+  magrittr::set_colnames(NULL) %>%
+  as_tibble() %>%
+  mutate(stock = unstandardized_daily_opens_df$stock)
+```
+
+The final step in processing the data is to add the outcome of the most recent daily difference to the data frames to check our predictions.   
+
+```{r}
+# Adding the daily difference outcome for the latest date
+standardized_final_df <- standardized_difference_df %>%
+  inner_join(outcome_df %>% select(stock, Direction), by = "stock") %>%
+  mutate(Direction = factor(Direction, levels = c("down", "up"))) %>%
+  select(-stock)
+
+# Adding the daily difference outcome for the latest date
+unstandardized_final_df <- unstandardized_difference_df %>%
+  inner_join(outcome_df %>% select(stock, Direction), by = "stock") %>%
+  mutate(Direction = factor(Direction, levels = c("down", "up"))) %>%
+  select(-stock)
+```
+
+## Run the Experiment  
+
+The data is now ready for the experiment, so we use create folds to partition the data into 10 partitions.  
+
+```{r}
+# create the cross-validation partition for standardized daily difference
+standardized_cv_partition <- createFolds(standardized_final_df$Direction,
+                            k = 10)
+# create the cross-validation partition for unstandardized daily difference
+unstandardized_cv_partition <- createFolds(unstandardized_final_df$Direction,
+                            k = 10)
+```
+
+Then, using the train control function we can set up the training parameters for our experiment using 10-fold cross-validation.  
+
+```{r}
+fit_control <- trainControl( 
+  method = "cv",
+  number = 10,
+  summaryFunction = twoClassSummary,
+  classProbs = TRUE,
+  savePredictions = TRUE)
+```
+
+For reproducibility set the seed to 1234 to attain the same results in future experiments.  
+
+```{r}
+set.seed(1234)
+```
+
+Now, we create a function to obtain the true positive-positive and false-positive rates. The function parameters are the data frame and the given 10-fold cross-validation partitions.  To learn more about cross-validation, true/false positive rates, and ROC curves please see the links below:  
+
+**Cross-validation:**  
+https://towardsdatascience.com/why-and-how-to-cross-validate-a-model-d6424b45261f  
+**true/false positive rates:**  
+https://developers.google.com/machine-learning/crash-course/classification/true-false-positive-negative  
+**ROC curve**  
+https://towardsdatascience.com/understanding-auc-roc-curve-68b2303cc9c5  
+
+```{r}
+# Function to attain performance of experiment
+get_roc_data <- function(final_df, cv_partition) {
+  mean_fpr <- seq(0, 1, len = 100)
+  aucs <- numeric(length(cv_partition))
+  
+  # iterate over folds
+  res <- lapply(seq_along(cv_partition),  function(i) {
+    # training the model using random forest excluding the holdout set 
+    fit <- train(Direction~.,
+                        data = final_df[-cv_partition[[i]],], 
+                        method = "rf",
+                        ntree = 500,
+                        trControl = fit_control,
+                        metric="ROC")
+    
+    # make predictions on the model using the holdout set
+    preds <- predict(fit, newdata = final_df[cv_partition[[i]],], type = "prob")$up
+    
+    # compute tpr and fpr from the hold out set
+    perf <- ROCR::prediction(preds, final_df$Direction[cv_partition[[i]]]) %>%
+      ROCR::performance(measure = "tpr", x.measure = "fpr")
+
+    fpr <- unlist(perf@x.values)
+    tpr <- unlist(perf@y.values)
+    
+    # interpolate the roc curve over 0, 1 range
+    interp_tpr <- approxfun(fpr, tpr)(mean_fpr)
+    interp_tpr[1] <- 0.0
+    
+    # collect values for this fold
+    data_frame(fold = rep(i, length(mean_fpr)), fpr = mean_fpr, tpr = interp_tpr)
+  })
+  
+  # combine values across all folds
+  # into a single data frame
+  do.call(rbind, res)
+}
+```
+
+Calling the function above on the standardized and unstandardized daily difference data frames. We now have two data frames where each entity contains which fold the result was a part of as well as the true-positive rate and false-positive rate.      
+
+```{r, cache = TRUE, warning = FALSE}
+# Getting performance for standardized daily difference
+standardized_curve_df <- get_roc_data(standardized_final_df, 
+                                      standardized_cv_partition)
+# Getting performance for unstandardized daily difference
+unstandardized_curve_df <- get_roc_data(unstandardized_final_df, 
+                                        unstandardized_cv_partition)
+```
+
+Now, we create a function that will take a data frame and then group by fold computing the area under the ROC curve for each fold.  
+
+```{r}
+# Return area under ROC curve
+compute_auc <- function(curve_df) {
+  curve_df %>% 
+    group_by(fold) %>%
+    summarize(auc = pracma::trapz(fpr, tpr))
+}
+```
+
+Lastly, calling the function on the resulting data frames to attain data frames where each entity contains the fold and the area under the ROC curve for that fold.  
+
+```{r, cache = TRUE, warning=FALSE}
+# Getting the area under ROC (standardized)
+standardized_auc_df <- compute_auc(standardized_curve_df)
+# Getting the area under ROC (unstandardized)
+unstandardized_auc_df <- compute_auc(unstandardized_curve_df)
+```
+
+To begin the comparison of these two methods we combined the results that contain all of the true/false positive rates for each fold for the standardized and unstandardized method. Then, combine the results that contained the area under the ROC curve for each fold for these two methods.    
+
+```{r, cache = TRUE, warning=FALSE}
+# Combine performance data for both models
+# into one data frame (adding column to indicate)
+# which model was used
+curve_df <- standardized_curve_df %>%
+  mutate(model = "standardized") %>%
+  rbind(mutate(unstandardized_curve_df, model = "unstandardized")) %>%
+  mutate(model = factor(model, levels = c("standardized", "unstandardized")))
+
+auc_df <- standardized_auc_df %>%
+  mutate(model = "standardized") %>%
+  rbind(mutate(unstandardized_auc_df, model = "unstandardized")) %>%
+  mutate(model = factor(model, levels = c("standardized", "unstandardized")))
+```
+
+# Machine Learning Results  
+
+Below we plot the results of each experiment using a box plot, plotting the area under the ROC curve on the x-axis and the model used on the y-axis.   
+
+```{r}
+ggplot(auc_df, aes(x = model, y = auc)) +
+  geom_boxplot() +
+  coord_flip() + 
+  labs(title="AUC comparison",
+       x="Model",
+       y="Area under ROC curve")
+```  
+
+The results show that on average the standardized model performs better than the unstandardized model on this dataset during the time of the coronavirus pandemic. We can confirm this by using a linear model on the standardized and unstandardized model to get a better idea of the difference in performance.    
+
+```{r}
+model_tab <- auc_df %>%
+  lm(auc~model, data = .) %>%
+  tidy() 
+
+model_tab %>%
+  knitr::kable()
+```  
+
+The model shows that on average the area under the ROC curve for the standardized model seems to be about (11%) higher than the unstandardized model. However, since the p-value (0.2365) is larger than 0.05 it is not a statistically significant difference. The last way we can compare these models is to plot the area under the ROC curve mapping the average true positive rate to the y-axis and the false positive rate to the x-axis.  
+
+```{r}
+curve_df %>%
+  group_by(model, fpr) %>%
+  summarize(tpr = mean(tpr)) %>%
+  ggplot(aes(x = fpr, y = tpr, color=model)) +
+    geom_line() +
+    labs(title = "ROC curves",
+         x = "False positive rate",
+         y = "True positive rate")
+```  
+
+The results once again confirm that the standardized model would be better to predict whether a stock's open price will increase or decrease during the coronavirus pandemic. Although, the results also show that neither model performance is great, so this could be due to neither of the models being good for this situation. However, this could also be due to higher volatility in the markets due to COVID-19 which makes it harder to predict whether a stock will increase or decrease in value. Moreover, these results have uncertainty, and while the results suggest the market is more volatile due to coronavirus this only supports the theory and should be explored further in future experiments.  
+
+# Conclusions  
+
+In conclusion, the analysis of the dataset suggests that coronavirus is impacting the stock market. The tutorial showed that the prediction methods used made it difficult to predict whether stock prices would go up or down. There is a potential problem that the models do not perform well for this situation, so if that's the case the suggestion does not hold. Another potential problem is that the stocks in the dataset are not representative of all stocks in the stock market. Although the collection of data attempted to create a diversified portfolio the stocks were not randomly sampled.  
+
+
+# References
+https://www.cnn.com/2020/05/01/investing/stock-market-recession-coronavirus/index.html  
+https://finance.yahoo.com/quote/%5EDJI?p=^DJI  
+https://en.wikipedia.org/wiki/List_of_largest_daily_changes_in_the_Dow_Jones_Industrial_Average  
+https://www.investopedia.com/terms/p/portfolio.asp  
+https://marketsmith.investors.com/Learn/Topic.aspx?name=Managing%2BYour%2BPortfolio&type=4  
+http://www.investorwords.com/2969/market_capitalization.html  
+https://www.investopedia.com/articles/markets/022316/small-cap-vs-mid-cap-vs-large-cap-stocks-2016.asp  
+https://www.investopedia.com/terms/s/sector.asp  
+https://www.timothysykes.com/blog/different-stock-sectors/  
+https://www.oreilly.com/library/view/hands-on-machine-learning/9781789346411/e17de38e-421e-4577-afc3-efdd4e02a468.xhtml  
+https://365datascience.com/standardization/  
+https://towardsdatascience.com/why-and-how-to-cross-validate-a-model-d6424b45261f    
+https://developers.google.com/machine-learning/crash-course/classification/true-false-positive-negative    
+https://towardsdatascience.com/understanding-auc-roc-curve-68b2303cc9c5    
+
+# Work Credited:  
+  
+**Montana**: Introduction & Motivation, Description of dataset, Data scraping and preparation, Machine Learning, and Conclusion  
+**Isaac**: Introduction & Motivation, Exploratory Data Analysis, and Data Transformation
+**Jnanadeep**: Introduction & Motivation, Exploratory Data Analysis, Introduction for Machine Learning, and Linear Regression  
