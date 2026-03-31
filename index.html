@@ -470,6 +470,11 @@
       font-weight: 600;
     }
 
+    .publication-list {
+      display: grid;
+      gap: 1rem;
+    }
+
     .publication-card {
       display: grid;
       gap: 0.85rem;
@@ -492,6 +497,16 @@
       display: flex;
       flex-wrap: wrap;
       gap: 0.75rem;
+    }
+
+    .detail-list {
+      margin-top: 0.1rem;
+      padding-left: 1.1rem;
+      color: var(--muted);
+    }
+
+    .detail-list li + li {
+      margin-top: 0.45rem;
     }
 
     .inline-link {
@@ -734,7 +749,7 @@
           <ul>
             <li><a href="#overview">Overview</a></li>
             <li><a href="#focus">Research Focus</a></li>
-            <li><a href="#publications">Selected Publication</a></li>
+            <li><a href="#publications">Publications and Current Work</a></li>
             <li><a href="#projects">Projects and Software</a></li>
             <li><a href="#experience">Experience</a></li>
             <li><a href="#education">Education</a></li>
@@ -760,7 +775,7 @@
           </p>
           <div class="hero-actions">
             <a class="button button-primary" href="Montana_Hoover_CV_2025.pdf" target="_blank" rel="noopener noreferrer">View CV</a>
-            <a class="button button-secondary" href="#publications">Selected Publication</a>
+            <a class="button button-secondary" href="#publications">Publications</a>
             <a class="button button-secondary" href="mailto:mjhoover@umd.edu">Get in touch</a>
           </div>
         </div>
@@ -831,29 +846,70 @@
 
       <section id="publications" class="panel" aria-labelledby="publications-heading">
         <div class="section-header">
-          <h2 id="publications-heading">Selected Publication</h2>
-          <p>A representative paper from my recent work in cross-source 3D place recognition.</p>
+          <h2 id="publications-heading">Publications and Current Work</h2>
+          <p>Accepted work, active submissions, and projects currently moving toward publication.</p>
         </div>
 
-        <article class="publication-card">
-          <div class="pub-meta">
-            <span>ICCV 2023</span>
-            <span>Cross-source 3D place recognition</span>
-          </div>
-          <div>
-            <h3>CrossLoc3D</h3>
-            <p>
-              Contributor to a framework for aerial-ground cross-source 3D place recognition,
-              aimed at matching scenes across substantial viewpoint and modality gaps. The project
-              combines 3D representation learning with retrieval-oriented evaluation for
-              challenging localization scenarios.
-            </p>
-          </div>
-          <div class="pub-links">
-            <a class="inline-link" href="https://openaccess.thecvf.com/content/ICCV2023/papers/Guan_CrossLoc3D_Aerial-Ground_Cross-Source_3D_Place_Recognition_ICCV_2023_paper.pdf" target="_blank" rel="noopener noreferrer">Read paper</a>
-            <a class="inline-link" href="https://github.com/rayguan97/crossloc3d" target="_blank" rel="noopener noreferrer">View code</a>
-          </div>
-        </article>
+        <div class="publication-list">
+          <article class="publication-card">
+            <div class="pub-meta">
+              <span>ICCV 2023</span>
+              <span>Published</span>
+              <span>Cross-source 3D place recognition</span>
+            </div>
+            <div>
+              <h3>CrossLoc3D</h3>
+              <p>
+                Contributor to a framework for aerial-ground cross-source 3D place recognition,
+                aimed at matching scenes across substantial viewpoint and modality gaps. The project
+                combines 3D representation learning with retrieval-oriented evaluation for
+                challenging localization scenarios.
+              </p>
+            </div>
+            <div class="pub-links">
+              <a class="inline-link" href="https://openaccess.thecvf.com/content/ICCV2023/papers/Guan_CrossLoc3D_Aerial-Ground_Cross-Source_3D_Place_Recognition_ICCV_2023_paper.pdf" target="_blank" rel="noopener noreferrer">Read paper</a>
+              <a class="inline-link" href="https://github.com/rayguan97/crossloc3d" target="_blank" rel="noopener noreferrer">View code</a>
+            </div>
+          </article>
+
+          <article class="publication-card">
+            <div class="pub-meta">
+              <span>IROS 2026</span>
+              <span>Under review</span>
+            </div>
+            <div>
+              <h3>Current submission</h3>
+              <p>
+                I currently have a research submission under review for IROS 2026 that extends my
+                work in 3D perception, LiDAR-centered scene understanding, and learning-based
+                spatial representations.
+              </p>
+            </div>
+            <ul class="detail-list">
+              <li>Current status: under review for IROS 2026.</li>
+              <li>Theme: 3D vision, point clouds, and robust spatial understanding.</li>
+            </ul>
+          </article>
+
+          <article class="publication-card">
+            <div class="pub-meta">
+              <span>CoRL 2026</span>
+              <span>In preparation</span>
+            </div>
+            <div>
+              <h3>Next manuscript in progress</h3>
+              <p>
+                I am also developing another project toward a CoRL 2026 submission, continuing my
+                interest in robotics-facing 3D learning problems and generative approaches for
+                spatial reasoning.
+              </p>
+            </div>
+            <ul class="detail-list">
+              <li>Current status: manuscript and experiments in progress for CoRL 2026.</li>
+              <li>Positioning: complementary to my ongoing work in perception and generative modeling.</li>
+            </ul>
+          </article>
+        </div>
       </section>
 
       <section id="projects" class="panel" aria-labelledby="projects-heading">
